@@ -1,17 +1,16 @@
-// Full Mini WMS backend (in-memory demo)
 const express = require('express');
 const cors = require('cors');
-const path = require('path');
 const bodyParser = require('body-parser');
+const path = require('path');
 
 const app = express();
 const PORT = process.env.PORT || 10000;
 
 app.use(cors());
 app.use(bodyParser.json());
-app.use(express.static('public'));
+app.use(express.static(path.join(__dirname, 'public')));
 
-// In-memory DB
+// In-memory storage
 let lots = [];
 let history = [];
 
@@ -36,11 +35,13 @@ function isExpired(expiry){
   return expiry < todayYYYYMMDD();
 }
 
+// GET stock lots
 app.get('/api/stock', (_req, res) => {
   const data = lots.map(l => ({ ...l, status: isExpired(l.expiry) ? 'EXPIRED' : 'OK' }));
   res.json(data);
 });
 
+// GET summary
 app.get('/api/summary', (_req, res) => {
   const m = {};
   for(const l of lots){
@@ -54,8 +55,10 @@ app.get('/api/summary', (_req, res) => {
   res.json(Object.values(m));
 });
 
+// GET history
 app.get('/api/history', (_req, res) => res.json(history));
 
+// POST inbound
 app.post('/api/inbound', (req, res) => {
   const { sku, name, qty, batch=null, expiry=null, location='DEFAULT' } = req.body || {};
   if(!sku || !name || !Number(qty)) return res.status(400).json({ error: 'Required: sku, name, qty' });
@@ -65,6 +68,7 @@ app.post('/api/inbound', (req, res) => {
   res.json({ message:'Received', lot });
 });
 
+// POST outbound
 app.post('/api/outbound', (req, res) => {
   const { sku, qty, mode='FEFO', minDaysToExpiry } = req.body || {};
   if(!sku || !Number(qty)) return res.status(400).json({ error:'Required: sku, qty' });
@@ -79,17 +83,15 @@ app.post('/api/outbound', (req, res) => {
       return diffDays >= minDaysToExpiry;
     });
   }
-  if(mode === 'FIFO'){
-    candidate.sort((a,b) => new Date(a.received_at) - new Date(b.received_at));
-  } else {
-    candidate.sort((a,b) => {
-      if(!a.expiry && !b.expiry) return new Date(a.received_at) - new Date(b.received_at);
-      if(!a.expiry) return 1;
-      if(!b.expiry) return -1;
-      if(a.expiry !== b.expiry) return new Date(a.expiry) - new Date(b.expiry);
-      return new Date(a.received_at) - new Date(b.received_at);
-    });
-  }
+  if(mode === 'FIFO') candidate.sort((a,b) => new Date(a.received_at) - new Date(b.received_at));
+  else candidate.sort((a,b) => {
+    if(!a.expiry && !b.expiry) return new Date(a.received_at) - new Date(b.received_at);
+    if(!a.expiry) return 1;
+    if(!b.expiry) return -1;
+    if(a.expiry !== b.expiry) return new Date(a.expiry) - new Date(b.expiry);
+    return new Date(a.received_at) - new Date(b.received_at);
+  });
+
   let remaining = needed;
   const picks = [];
   for(const lot of candidate){
@@ -101,13 +103,12 @@ app.post('/api/outbound', (req, res) => {
       remaining -= take;
     }
   }
-  if(remaining > 0){
-    return res.status(409).json({ error:'Insufficient quantity', requested: needed, allocated: needed-remaining, picks });
-  }
+  if(remaining > 0) return res.status(409).json({ error:'Insufficient quantity', requested: needed, allocated: needed-remaining, picks });
   history.push({ type:'OUT', sku, qty: needed, details:{ mode, picks }, ts: new Date().toISOString() });
   res.json({ message:'Picked', sku, qty: needed, picks });
 });
 
+// DELETE lot
 app.delete('/api/stock/:id', (req, res) => {
   const id = req.params.id;
   const idx = lots.findIndex(l => l.id === id);

@@ -1,18 +1,5 @@
-Full Mini WMS (frontend + backend) — deploy-ready
+Mini WMS (full UI) - deploy-ready
 
+Run: npm install && npm start
 
-Contents:
-- server.js (Express backend, in-memory DB)
-- package.json
-- public/index.html (full UI)
-
-Run locally:
-1. npm install
-2. npm start
-3. Open http://localhost:10000
-
-Deploy to Render:
-- Push repo to GitHub
-- Create Web Service in Render, connect repo
-- Build: npm install
-- Start: npm start
+Deploy: push to GitHub and create Render Web Service.
